@@ -48,3 +48,4 @@ frontend/           React + Vite
 - Consulter `AMELIORATIONS.md` pour le détail des évolutions, la configuration et la checklist préproduction.
 - Le fichier `.env` local est volontairement exclu de la distribution ; utiliser `.env.example`.
 - Ne jamais exposer une clé Supabase `service_role` dans les variables `VITE_*`.
+# test
