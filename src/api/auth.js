@@ -48,7 +48,16 @@ export const signUpWithIdentifier = async (identifier, password, meta = {}) => {
     data: { ...meta, phone: parsed.kind === 'phone' ? parsed.value : '' },
     ...(parsed.kind === 'phone' ? { channel: 'sms' } : {}),
   }
-  const data = unwrap(await supabase.auth.signUp({ ...credentials, options }))
+  const { data, error } = await supabase.auth.signUp({ ...credentials, options })
+  if (error) {
+    if (['user_already_exists', 'email_exists', 'phone_exists'].includes(error.code)) {
+      throw new Error('Cet identifiant est déjà utilisé. Connectez-vous ou utilisez-en un autre.')
+    }
+    throw error
+  }
+  if (data.user?.identities?.length === 0) {
+    throw new Error('Cet identifiant est déjà utilisé. Connectez-vous ou utilisez-en un autre.')
+  }
   return { ...data, identifier: parsed.value, kind: parsed.kind }
 }
 

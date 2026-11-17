@@ -67,10 +67,6 @@ export default function LoginPage() {
         full_name: form.name.trim(),
         account_type: form.type,
       })
-      if (data.user?.identities?.length === 0) {
-        setMessage('Impossible de créer le compte avec ces informations. Vérifiez la saisie ou connectez-vous.')
-        return
-      }
       if (data.session) {
         await signOut()
         setMessage('La vérification est désactivée pour ce fournisseur. Activez la confirmation par code dans Supabase puis réessayez.')
