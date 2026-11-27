@@ -12,6 +12,7 @@ import { disablePush, enablePush, getPushState, pushSupported } from '../lib/pus
 import { compressImage } from '../lib/image'
 import { facebookLink } from '../lib/format'
 import PageLoading from '../components/PageLoading'
+import ShopLocationPicker from '../components/ShopLocationPicker'
 
 export default function ProfilePage() {
   const { user, loading } = useSession()
@@ -57,6 +58,7 @@ export default function ProfilePage() {
   async function saveCroppedAvatar(file) {
     const url = await uploadPublic(await compressImage(file))
     setP((current) => ({ ...current, avatar_url: url }))
+    setShop((current) => current ? ({ ...current, avatar_url: url }) : current)
     setAvatarCropFile(null)
   }
   async function togglePush() {
@@ -120,8 +122,10 @@ export default function ProfilePage() {
         city: shop.city,
         whatsapp: shop.whatsapp.trim() || null,
         facebook_url: facebookLink(shop.facebook_url),
-        avatar_url: shop.avatar_url,
+        avatar_url: p.avatar_url || null,
         cover_url: shop.cover_url,
+        lat: shop.lat == null ? null : Number(shop.lat),
+        lng: shop.lng == null ? null : Number(shop.lng),
       })
 
       if (emailChanged) {
@@ -197,9 +201,8 @@ export default function ProfilePage() {
           <div className="cover" style={shop.cover_url ? { backgroundImage: `url(${shop.cover_url})` } : undefined} />
           <div className="pad">
             <h2>Ma boutique</h2>
+            <p className="mu auth-note">La photo de votre profil est également utilisée comme photo de votre boutique. Vous n’avez qu’une seule photo à gérer.</p>
             <div className="row" style={{ flexWrap: 'wrap' }}>
-              <Avatar url={shop.avatar_url} name={shop.name} size={72} />
-              <FilePicker accept="image/*" onChange={pick(shop, setShop, 'avatar_url')} title="Logo" icon="image" className="is-compact" />
               <FilePicker accept="image/*" onChange={pick(shop, setShop, 'cover_url')} title="Photo de couverture" icon="image" className="is-compact" />
             </div>
             <label>Nom de la boutique</label><input required {...g('name')} />
@@ -208,6 +211,7 @@ export default function ProfilePage() {
             <label>Lien du profil Facebook</label><input type="url" placeholder="https://www.facebook.com/votre.profil" {...g('facebook_url')} />
             <p className="mu auth-note">Ajoutez les deux pour laisser le choix à vos clients. Au moins un moyen de contact est nécessaire.</p>
             <label>Description</label><textarea rows="3" {...g('bio')} />
+            <ShopLocationPicker lat={shop.lat} lng={shop.lng} onChange={(point) => setShop((current) => ({ ...current, ...point }))} />
           </div>
         </div>
       )}

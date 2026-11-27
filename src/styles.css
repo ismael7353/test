@@ -1,0 +1,5 @@
+
+/* Sélecteur de position de la boutique */
+.shop-location-picker { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border, #d5ddd8); }
+.shop-location-map { width: 100%; height: 260px; margin-top: 12px; border: 1px solid var(--border, #89958e); border-radius: 14px; overflow: hidden; z-index: 0; }
+.shop-location-picker .row button { min-height: 42px; }
