@@ -1,0 +1,77 @@
+{
+  "name": "Vendeo — Boutiques d'Antananarivo",
+  "short_name": "Vendeo",
+  "description": "Achetez et vendez à Antananarivo",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1512",
+  "theme_color": "#0f9d6b",
+  "lang": "fr",
+  "categories": [
+    "shopping",
+    "social"
+  ],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Découvrir les boutiques",
+      "short_name": "Découvrir",
+      "url": "/discover",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Publier un produit",
+      "short_name": "Publier",
+      "url": "/publish",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Mes notifications",
+      "short_name": "Notifications",
+      "url": "/notifications",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

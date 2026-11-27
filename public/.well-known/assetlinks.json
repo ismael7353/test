@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "mg.vendeo.app",
+      "sha256_cert_fingerprints": [
+        "F8:0A:0B:BC:29:A7:67:6F:0B:C1:F3:35:CF:38:2F:EC:53:09:1C:D7:B8:A4:2B:90:B6:24:69:B9:24:3C:BD:2C"
+      ]
+    }
+  }
+]
