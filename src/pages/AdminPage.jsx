@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+
+import { useEffect, useState, useCallback } from 'react'
 import { Navigate } from 'react-router-dom'
 import { PRICES } from '../api/billing'
 import { useSession } from '../hooks/useSession'
@@ -13,155 +14,524 @@ const TABS = {
   reports: ['Signalements', 'admin_reports'],
   shops: ['Boutiques', 'admin_shops'],
 }
-const LABELS = { users: 'Utilisateurs', shops: 'Boutiques', posts: 'Publications', orders: 'Commandes', pro: 'Boutiques Pro', pending: 'Paiements à valider', plan_requests_pending: 'Demandes Pro WhatsApp', reports: 'Signalements', revenue: 'Revenus' }
-const REQUEST_STATUSES = { pending: 'À traiter', paid: 'Payé · Pro activé', rejected: 'Refusé' }
+
+const LABELS = {
+  users: 'Utilisateurs',
+  shops: 'Boutiques',
+  posts: 'Publications',
+  orders: 'Commandes',
+  pro: 'Boutiques Pro',
+  pending: 'Paiements à valider',
+  plan_requests_pending: 'Demandes Pro WhatsApp',
+  reports: 'Signalements',
+  revenue: 'Revenus',
+}
+
+const REQUEST_STATUSES = {
+  pending: 'À traiter',
+  paid: 'Payé · Pro activé',
+  rejected: 'Refusé',
+}
+
+// Normalise les réponses Supabase
+function normalizeData(result, currentTab) {
+  if (currentTab === 'overview') {
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+      return result
+    }
+    return {}
+  }
+
+  if (Array.isArray(result)) return result
+
+  // Certaines fonctions RPC peuvent retourner un tableau dans data
+  if (result && Array.isArray(result.data)) {
+    return result.data
+  }
+
+  // Une absence de résultat correspond à une liste vide
+  if (result === null || result === undefined) {
+    return []
+  }
+
+  console.error(
+    `Format RPC incorrect pour ${currentTab}:`,
+    result
+  )
+
+  return []
+}
 
 export default function AdminPage() {
   const { user, loading } = useSession()
+
   const [tab, setTab] = useState('overview')
   const [data, setData] = useState(null)
   const [denied, setDenied] = useState(false)
   const [error, setError] = useState('')
   const [requestEdits, setRequestEdits] = useState({})
   const [savingRequest, setSavingRequest] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
+    if (!user) return
+
     setData(null)
     setError('')
+
     try {
-      const { data: result, error: resultError } = await supabase.rpc(TABS[tab][1])
+      const { data: result, error: resultError } =
+        await supabase.rpc(TABS[tab][1])
+
       if (resultError) {
-        if (resultError.message?.includes('INTERDIT')) setDenied(true)
-        else setError(resultError.message || 'Impossible de charger les données.')
+        if (resultError.message?.includes('INTERDIT')) {
+          setDenied(true)
+        } else {
+          setError(
+            resultError.message ||
+            'Impossible de charger les données.'
+          )
+        }
         return
       }
+
       setDenied(false)
+
+      const normalized = normalizeData(result, tab)
+
+      setData(normalized)
       setRequestEdits({})
-      setData(result)
     } catch (loadError) {
-      setError(loadError.message || 'Impossible de charger les données.')
+      console.error('Erreur chargement admin:', loadError)
+
+      setError(
+        loadError.message ||
+        'Impossible de charger les données.'
+      )
     }
-  }
+  }, [user, tab])
 
-  useEffect(() => { if (user) load() }, [user, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load()
+  }, [load])
 
+  // Vérifie si les données sont un tableau
+  const listData = Array.isArray(data) ? data : []
+
+  // Actions administrateur
   async function act(fn, args) {
     setError('')
+    setActionLoading(true)
+
     try {
-      const { error: actionError } = await supabase.rpc(fn, args)
+      const { error: actionError } =
+        await supabase.rpc(fn, args)
+
       if (actionError) throw actionError
+
       await load()
     } catch (actionError) {
-      setError(actionError.message || 'Impossible d’effectuer cette action.')
+      console.error('Erreur action admin:', actionError)
+
+      setError(
+        actionError.message ||
+        'Impossible d’effectuer cette action.'
+      )
+    } finally {
+      setActionLoading(false)
     }
   }
 
+  // Mise à jour des demandes Pro
   async function savePlanRequest(request) {
-    const edit = requestEdits[request.id] || { status: request.status, months: request.months }
+    const edit = requestEdits[request.id] || {
+      status: request.status,
+      months: request.months,
+    }
+
+    const months = Number(edit.months)
+
+    if (![1, 3, 12].includes(months)) {
+      setError('Durée de formule invalide.')
+      return
+    }
+
     setSavingRequest(request.id)
     setError('')
+
     try {
-      const { error: actionError } = await supabase.rpc('admin_update_plan_request', {
-        p_id: request.id,
-        p_status: edit.status,
-        p_months: Number(edit.months),
-      })
+      const { error: actionError } = await supabase.rpc(
+        'admin_update_plan_request',
+        {
+          p_id: request.id,
+          p_status: edit.status,
+          p_months: months,
+        }
+      )
+
       if (actionError) throw actionError
+
       await load()
     } catch (actionError) {
-      setError(actionError.message || 'Impossible de mettre à jour cette demande.')
+      console.error('Erreur demande Pro:', actionError)
+
+      setError(
+        actionError.message ||
+        'Impossible de mettre à jour cette demande.'
+      )
     } finally {
       setSavingRequest('')
     }
   }
 
-  if (loading) return <PageLoading label="Vérification de votre accès…" />
-  if (!user) return <Navigate to="/login" replace />
-  if (denied) return <div className="card pad">Accès réservé à l’administrateur.</div>
+  if (loading) {
+    return <PageLoading label="Vérification de votre accès…" />
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (denied) {
+    return (
+      <div className="card pad">
+        Accès réservé à l’administrateur.
+      </div>
+    )
+  }
 
   return (
     <>
       <div className="row sp">
         <h2>Administration</h2>
-        <button type="button" onClick={load}>Actualiser</button>
+
+        <button
+          type="button"
+          onClick={load}
+          disabled={!user || !data && actionLoading}
+        >
+          Actualiser
+        </button>
       </div>
-      <div className="seg">{Object.entries(TABS).map(([key, [label]]) => <button key={key} className={tab === key ? 'on' : ''} onClick={() => setTab(key)}>{label}</button>)}</div>
-      {error && <p className="card pad auth-message" role="alert">{error}</p>}
-      {!data && !error && <PageLoading label="Chargement des données…" compact />}
-      {tab === 'overview' && data && <div className="card pad stats">{Object.entries(data).map(([key, value]) => <div key={key}><b>{key === 'revenue' ? formatAr(value) : value}</b><span className="mu">{LABELS[key]}</span></div>)}</div>}
-      {tab === 'plan_requests' && data && (data.length === 0 ? <div className="card pad">Aucune demande Pro pour le moment.</div> : data.map((request) => {
-        const edit = requestEdits[request.id] || { status: request.status, months: request.months }
-        return (
-          <div key={request.id} className="card pad">
-            <div className="row sp">
-              <div>
-                <b>{request.shop}</b> <span className="tag">{REQUEST_STATUSES[request.status] || request.status}</span>
-                <div className="mu">
-                  {request.owner_username ? `@${request.owner_username} · ` : ''}
-                  {request.city || 'Ville non renseignée'}
-                  {request.shop_whatsapp ? ` · WhatsApp : ${request.shop_whatsapp}` : ''}
+
+      {/* Navigation */}
+      <div className="seg">
+        {Object.entries(TABS).map(([key, [label]]) => (
+          <button
+            key={key}
+            type="button"
+            className={tab === key ? 'on' : ''}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Erreurs */}
+      {error && (
+        <p className="card pad auth-message" role="alert">
+          {error}
+        </p>
+      )}
+
+      {/* Chargement */}
+      {data === null && !error && (
+        <PageLoading
+          label="Chargement des données…"
+          compact
+        />
+      )}
+
+      {/* Aperçu */}
+      {tab === 'overview' && data && (
+        <div className="card pad stats">
+          {Object.entries(data).map(([key, value]) => (
+            <div key={key}>
+              <b>
+                {key === 'revenue'
+                  ? formatAr(value)
+                  : value}
+              </b>
+
+              <span className="mu">
+                {LABELS[key] || key}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Demandes Pro */}
+      {tab === 'plan_requests' && Array.isArray(data) && (
+        listData.length === 0 ? (
+          <div className="card pad">
+            Aucune demande Pro pour le moment.
+          </div>
+        ) : (
+          listData.map((request) => {
+            const edit = requestEdits[request.id] || {
+              status: request.status,
+              months: request.months,
+            }
+
+            return (
+              <div key={request.id} className="card pad">
+                <div className="row sp">
+                  <div>
+                    <b>{request.shop}</b>
+
+                    <span className="tag">
+                      {REQUEST_STATUSES[request.status] ||
+                        request.status}
+                    </span>
+
+                    <div className="mu">
+                      {request.owner_username
+                        ? `@${request.owner_username} · `
+                        : ''}
+                      {request.city || 'Ville non renseignée'}
+
+                      {request.shop_whatsapp
+                        ? ` · WhatsApp : ${request.shop_whatsapp}`
+                        : ''}
+                    </div>
+
+                    <div className="mu">
+                      Réf. {request.id}
+                    </div>
+                  </div>
+
+                  <div className="mu">
+                    {request.created_at
+                      ? new Date(request.created_at).toLocaleString('fr-FR')
+                      : 'Date inconnue'}
+                  </div>
                 </div>
-                <div className="mu">Réf. {request.id}</div>
-              </div>
-              <div className="mu">{new Date(request.created_at).toLocaleString('fr-FR')}</div>
-            </div>
-            <p>Offre demandée : {request.months} mois · {formatAr(request.amount)}</p>
-            {request.status === 'paid' && request.plan_until && <p className="mu">Pro actif jusqu’au {new Date(request.plan_until).toLocaleDateString('fr-FR')}</p>}
-            <div className="grid">
-              <label>
-                Statut
-                <select
-                  value={edit.status}
-                  disabled={request.status === 'paid' || savingRequest === request.id}
-                  onChange={(event) => setRequestEdits((current) => ({ ...current, [request.id]: { ...edit, status: event.target.value } }))}
-                >
-                  {Object.entries(REQUEST_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
-              <label>
-                Durée / tarif
-                <select
-                  value={edit.months}
+
+                <p>
+                  Offre demandée : {request.months} mois ·{' '}
+                  {formatAr(request.amount)}
+                </p>
+
+                {request.status === 'paid' &&
+                  request.plan_until && (
+                    <p className="mu">
+                      Pro actif jusqu’au{' '}
+                      {new Date(request.plan_until).toLocaleDateString('fr-FR')}
+                    </p>
+                  )}
+
+                <div className="grid">
+                  <label>
+                    Statut
+
+                    <select
+                      value={edit.status}
+                      disabled={
+                        request.status === 'paid' ||
+                        savingRequest === request.id
+                      }
+                      onChange={(event) =>
+                        setRequestEdits((current) => ({
+                          ...current,
+                          [request.id]: {
+                            ...edit,
+                            status: event.target.value,
+                          },
+                        }))
+                      }
+                    >
+                      {Object.entries(REQUEST_STATUSES).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        )
+                      )}
+                    </select>
+                  </label>
+
+                  <label>
+                    Durée / tarif
+
+                    <select
+                      value={edit.months}
+                      disabled={savingRequest === request.id}
+                      onChange={(event) =>
+                        setRequestEdits((current) => ({
+                          ...current,
+                          [request.id]: {
+                            ...edit,
+                            months: Number(event.target.value),
+                          },
+                        }))
+                      }
+                    >
+                      {[1, 3, 12].map((months) => (
+                        <option key={months} value={months}>
+                          {months} mois · {formatAr(PRICES[months])}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <p className="mu auth-note">
+                  Confirmer le paiement active Pro.
+                  La durée peut être ajustée ici.
+                </p>
+
+                <button
+                  className="pri"
                   disabled={savingRequest === request.id}
-                  onChange={(event) => setRequestEdits((current) => ({ ...current, [request.id]: { ...edit, months: Number(event.target.value) } }))}
+                  onClick={() => savePlanRequest(request)}
                 >
-                  {[1, 3, 12].map((months) => <option key={months} value={months}>{months} mois · {formatAr(PRICES[months])}</option>)}
-                </select>
-              </label>
-            </div>
-            <p className="mu auth-note">Confirmer le paiement active Pro. La durée peut être ajustée ici, même après activation.</p>
-            <button className="pri" disabled={savingRequest === request.id} onClick={() => savePlanRequest(request)}>
-              {savingRequest === request.id ? 'Enregistrement…' : 'Enregistrer la demande'}
-            </button>
-          </div>
+                  {savingRequest === request.id
+                    ? 'Enregistrement…'
+                    : 'Enregistrer la demande'}
+                </button>
+              </div>
+            )
+          })
         )
-      }))}
-      {tab === 'payments' && data && (data.length === 0 ? <div className="card pad">Aucun paiement en attente.</div> : data.map((payment) => (
-        <div key={payment.id} className="card pad">
-          <b>{payment.shop}</b> · {formatAr(payment.amount)} · {payment.months} mois
-          <div className="mu">{payment.method} · tél. {payment.sender_phone} · réf. {payment.ref}</div>
-          <div className="grid" style={{ marginTop: 8 }}>
-            <button className="pri" onClick={() => act('admin_decide', { p_id: payment.id, p_ok: true })}>Valider</button>
-            <button onClick={() => act('admin_decide', { p_id: payment.id, p_ok: false })}>Refuser</button>
+      )}
+
+      {/* Paiements */}
+      {tab === 'payments' && Array.isArray(data) && (
+        listData.length === 0 ? (
+          <div className="card pad">
+            Aucun paiement en attente.
           </div>
-        </div>
-      )))}
-      {tab === 'reports' && data && (data.length === 0 ? <div className="card pad">Aucun signalement.</div> : data.map((report) => (
-        <div key={report.id} className="card pad">
-          <b>{report.title || 'Publication supprimée'}</b> <span className="mu">{report.shop}</span>
-          <p>{report.reason}</p>
-          <div className="grid">
-            <button onClick={() => act('admin_resolve_report', { p_id: report.id, p_delete: true })}>Supprimer la publication</button>
-            <button onClick={() => act('admin_resolve_report', { p_id: report.id, p_delete: false })}>Ignorer</button>
+        ) : (
+          listData.map((payment) => (
+            <div key={payment.id} className="card pad">
+              <b>{payment.shop}</b> · {formatAr(payment.amount)} ·{' '}
+              {payment.months} mois
+
+              <div className="mu">
+                {payment.method} · tél. {payment.sender_phone} · réf.{' '}
+                {payment.ref}
+              </div>
+
+              <div className="grid" style={{ marginTop: 8 }}>
+                <button
+                  className="pri"
+                  disabled={actionLoading}
+                  onClick={() =>
+                    act('admin_decide', {
+                      p_id: payment.id,
+                      p_ok: true,
+                    })
+                  }
+                >
+                  Valider
+                </button>
+
+                <button
+                  disabled={actionLoading}
+                  onClick={() =>
+                    act('admin_decide', {
+                      p_id: payment.id,
+                      p_ok: false,
+                    })
+                  }
+                >
+                  Refuser
+                </button>
+              </div>
+            </div>
+          ))
+        )
+      )}
+
+      {/* Signalements */}
+      {tab === 'reports' && Array.isArray(data) && (
+        listData.length === 0 ? (
+          <div className="card pad">
+            Aucun signalement.
           </div>
-        </div>
-      )))}
-      {tab === 'shops' && data && data.map((shop) => (
-        <div key={shop.id} className="card pad row sp">
-          <div><b>{shop.name}</b>{shop.plan === 'pro' && new Date(shop.plan_until) > new Date() && <span className="tag" style={{ marginLeft: 6 }}>Pro</span>}<div className="mu">{shop.city} · /{shop.slug}</div></div>
-          <button className={shop.verified ? '' : 'pri'} onClick={() => act('admin_set_verified', { p_id: shop.id, p_v: !shop.verified })}>{shop.verified ? 'Retirer le badge' : 'Vérifier'}</button>
-        </div>
-      ))}
+        ) : (
+          listData.map((report) => (
+            <div key={report.id} className="card pad">
+              <b>{report.title || 'Publication supprimée'}</b>{' '}
+              <span className="mu">{report.shop}</span>
+
+              <p>{report.reason}</p>
+
+              <div className="grid">
+                <button
+                  disabled={actionLoading}
+                  onClick={() =>
+                    act('admin_resolve_report', {
+                      p_id: report.id,
+                      p_delete: true,
+                    })
+                  }
+                >
+                  Supprimer la publication
+                </button>
+
+                <button
+                  disabled={actionLoading}
+                  onClick={() =>
+                    act('admin_resolve_report', {
+                      p_id: report.id,
+                      p_delete: false,
+                    })
+                  }
+                >
+                  Ignorer
+                </button>
+              </div>
+            </div>
+          ))
+        )
+      )}
+
+      {/* Boutiques */}
+      {tab === 'shops' && Array.isArray(data) && (
+        listData.length === 0 ? (
+          <div className="card pad">
+            Aucune boutique.
+          </div>
+        ) : (
+          listData.map((shop) => (
+            <div key={shop.id} className="card pad row sp">
+              <div>
+                <b>{shop.name}</b>
+
+                {shop.plan === 'pro' &&
+                  shop.plan_until &&
+                  new Date(shop.plan_until) > new Date() && (
+                    <span className="tag" style={{ marginLeft: 6 }}>
+                      Pro
+                    </span>
+                  )}
+
+                <div className="mu">
+                  {shop.city} · /{shop.slug}
+                </div>
+              </div>
+
+              <button
+                disabled={actionLoading}
+                className={shop.verified ? '' : 'pri'}
+                onClick={() =>
+                  act('admin_set_verified', {
+                    p_id: shop.id,
+                    p_v: !shop.verified,
+                  })
+                }
+              >
+                {shop.verified
+                  ? 'Retirer le badge'
+                  : 'Vérifier'}
+              </button>
+            </div>
+          ))
+        )
+      )}
     </>
   )
 }
